@@ -206,6 +206,16 @@ CREATE_RELATIONSHIP_QUERY = """
     }
 """
 
+REMOVE_RELATIONSHIP_QUERY = """
+    mutation CaseIncidentEditRelationDelete($id: ID!, $toId: StixRef!, $relationship_type: String!) {
+        stixDomainObjectEdit(id: $id) {
+            relationDelete(toId: $toId, relationship_type: $relationship_type) {
+            id
+            }
+        }
+    }
+"""
+
 # LIST_IOC_FROM_CASE_QUERY = """
 #     query ContainerHeaderObjectsQuery($id: String!) {
 #         container(id: $id) {

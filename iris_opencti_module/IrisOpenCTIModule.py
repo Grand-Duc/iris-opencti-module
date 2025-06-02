@@ -145,7 +145,7 @@ class IrisOpenCTIModule(IrisModuleInterface):
                     observable_id = opencti_observable.get('id')
                     if opencti_case_id and observable_id:
                         self.log.info(f"Attempting to link OpenCTI case '{opencti_case_id}' with observable '{observable_id}'.")
-                        opencti_handler.create_relationship(from_id=opencti_case_id, to_id=observable_id, relationship_type="object") # Or "object"
+                        opencti_handler.create_relationship(case_id=opencti_case_id, ioc_id=observable_id, relationship_type="object") # Or "object"
                     else:
                         self.log.warning(f"Missing OpenCTI case ID or observable ID for IOC {ioc.ioc_value}. Cannot create relationship.")
                 else:

@@ -529,7 +529,7 @@ class OpenCTIHandler:
     #         self.log.error(f"Create relationship failed: {str(e)}")
     #         return None
 
-    def create_relationship(self, from_id: str, to_id: str, relationship_type: str = "object"):
+    def create_relationship(self, case_id: str, ioc_id: str, relationship_type: str = "object"):
         """
         Creates a relationship in OpenCTI between two entities.
         Typically used to link an IOC (to_id) to a case (from_id).
@@ -538,19 +538,18 @@ class OpenCTIHandler:
             from_id (str): The ID of the source entity (e.g., OpenCTI Case ID).
             to_id (str): The ID of the target entity (e.g., OpenCTI Observable ID).
             relationship_type (str, optional): The type of relationship. Defaults to "object".
-                                               Commonly "related-to" or specific STIX types.
 
         Returns:
             dict: The created relationship node if successful, None otherwise.
         """
         variables = {
-            "id": from_id,
+            "id": case_id,
             "input": {
-                "toId": to_id,
+                "toId": ioc_id,
                 "relationship_type": relationship_type
             }
         }
-        self.log.info(f"Creating relationship from {from_id} to {to_id} of type '{relationship_type}'.")
+        self.log.info(f"Creating relationship from {case_id} to {ioc_id} of type '{relationship_type}'.")
         data = self._execute_graphql_query(CREATE_RELATIONSHIP_QUERY, variables)
 
         if data and data.get('containerEdit') and data['containerEdit'].get('relationAdd'):
@@ -558,8 +557,35 @@ class OpenCTIHandler:
             self.log.info(f"Relationship (ID: {relationship.get('id')}) created successfully.")
             return relationship
 
-        self.log.error(f"Failed to create relationship from {from_id} to {to_id}.")
+        self.log.error(f"Failed to create relationship from {case_id} to {ioc_id}.")
         return None
+    
+    def remove_relationship(self, case_id: str, ioc_id: str, relationship_type: str = "object"):
+        """
+        Creates a relationship in OpenCTI between a case and an IOC.
+        Args:
+            case_id (str): The ID of the OpenCTI case to which the IOC will be linked.
+            ioc_id (str): The ID of the OpenCTI IOC to link to the case.
+            relationship_type (str): The type of relationship to create. Defaults to "object".
+        Returns:
+            dict: The created relationship node if successful, None otherwise.
+        """
+        variables = {
+            "id": case_id,
+            "toId": ioc_id,
+            "relationship_type": relationship_type
+        }
+        self.log.info(f"Removing relationship from {case_id} to {ioc_id} of type '{relationship_type}'.")
+        data = self._execute_graphql_query(REMOVE_RELATIONSHIP_QUERY, variables)
+
+        if data and data.get('stixDomainObjectEdit') and data['stixDomainObjectEdit'].get('relationDelete'):
+            relationship = data['stixDomainObjectEdit']['relationDelete']
+            self.log.info(f"Relationship (from case ID: {relationship.get('id')}) removed successfully.")
+            return relationship
+
+        self.log.error(f"Failed to remove relationship from {case_id} to {ioc_id}.")
+        return None
+
 
     # def compare_ioc(self, opencti_case_id):
     #     if not self.iris_case:
@@ -654,8 +680,8 @@ class OpenCTIHandler:
                 # For now, proceeding with deletion from the current case context.
                 if self.check_ioc_ownership(opencti_ioc):
                     self.delete_ioc(opencti_ioc_id)
-                # else:
-                #     self.remove_relationship(opencti_case_id, opencti_ioc_id, "object") #TODO
+                else:
+                    self.remove_relationship(opencti_case_id, opencti_ioc_id, "object") #TODO
 
     def check_ioc_ownership(self, opencti_ioc, mode = 'strict'):
         """

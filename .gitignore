@@ -1,0 +1,4 @@
+buildnpush2iris.sh
+build
+dist
+iris_opencti_module.egg-info/
