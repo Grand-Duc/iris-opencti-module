@@ -8,37 +8,38 @@ from app.datamgmt.case.case_iocs_db import get_detailed_iocs
 class OpenCTIHandler:
 
     HASH_TYPES = ['md5', 'sha1', 'sha256', 'sha512']
+    IP_TYPES = ['ip-any', 'ip-dst', 'ip-src']
+
     ATTRIBUTE_CONFIG = {
-        h: {
-            'key_conversion': f'hashes.{h.upper()}',
+        hash: {
+            'key_conversion': f'hashes.{hash.upper()}',
             'type_conversion': 'File',
             'create_type_conversion': 'StixFile',
             'other_type_conversion': 'StixFile',
-            'is_hash': True,
-        } for h in HASH_TYPES
+        } for hash in HASH_TYPES
     }
-
     ATTRIBUTE_CONFIG.update({
-        'ip-any': {
+        ip: {
             'key_conversion': 'value',
             'type_conversion': 'IPv4-Addr',
             'create_type_conversion': 'IPv4-Addr',
             'other_type_conversion': 'IPv4Addr',
-            'is_hash': False,
-        },
+        } for ip in IP_TYPES
+    })
+
+
+    ATTRIBUTE_CONFIG.update({
         'url': {
             'key_conversion': 'value',
             'type_conversion': 'Url',
             'create_type_conversion': 'Url',
             'other_type_conversion': 'Url',
-            'is_hash': False,
         },
         'domain': {
             'key_conversion': 'value',
             'type_conversion': 'Domain-Name',
             'create_type_conversion': 'DomainName',
             'other_type_conversion': 'DomainName',
-            'is_hash': False,
         },
         'md5': {
             'upload_type': 'MD5',
@@ -161,7 +162,7 @@ class OpenCTIHandler:
 
         self.log.info(f"OpenCTI case '{self.iris_case.name}' does not exist or query failed.")
         return None
-    
+
     def check_case_exists_from_iris_id(self, case_iris_id):
         """
         Checks if the case associated with self.iris_case exists in OpenCTI.
@@ -194,39 +195,6 @@ class OpenCTIHandler:
 
         self.log.info(f"OpenCTI case with Iris ID '{case_iris_id}' does not exist or query failed.")
         return None
-
-
-    # def check_case_exists(self):
-    #     if self.iris_case:
-    #         variables = {
-    #             "filters": {
-    #                 "mode": "and",
-    #                 "filters": [
-    #                 {
-    #                     "key": "name",
-    #                     "values": self.iris_case.name #TODO change OpenCTI case Name (with case_uuid for instance) to avoid duplicates
-    #                 }
-    #                 ],
-    #                 "filterGroups": []
-    #             }
-    #         }
-    #         try:
-    #             result = self.send_query(self.CHECK_CASE_EXISTS_QUERY, variables)
-    #             if result:
-    #                 data = result.json().get('data', {}).get('caseIncidents', {}).get('edges', [])
-    #                 if data:
-    #                     case = data[0]['node']
-    #                     self.log.info(f"Case exists: {case}")
-    #                     return case
-    #                 else:
-    #                     self.log.info("Case does not exist")
-    #                     return None
-    #             else:
-    #                 self.log.error("Failed to check case existence")
-    #                 return None
-    #         except ValueError as e:
-    #             self.log.error(f"Check case existence failed: {str(e)}")
-    #             return None
 
     def check_ioc_exists(self):
         """
@@ -262,41 +230,6 @@ class OpenCTIHandler:
         self.log.info(f"OpenCTI IOC '{self.ioc.ioc_value}' does not exist or query failed.")
         return None
 
-    # def check_ioc_exists(self, ioc):
-    #     ioc_type = ioc.ioc_type.type_name
-    #     type = self.ATTRIBUTE_CONFIG[ioc_type].get('type_conversion', 'None')
-    #     key = self.ATTRIBUTE_CONFIG[ioc_type].get('key_conversion', 'value')
-    #     values = [ioc.ioc_value]
-    #     self.log.info(
-    #         f"Checking IOC existence for type: {type}, key: {key}, values: {values}")
-    #     filters = {
-    #         'mode': 'and',
-    #         'filters': [{
-    #             'key': key,
-    #             'values': values
-    #         }],
-    #         'filterGroups': []}
-    #     variables = {"types": type,
-    #                  "filters": filters,
-    #                  }
-    #     try:
-    #         result = self.send_query(self.CHECK_IOC_EXISTS_QUERY, variables)
-    #         if result:
-    #             data = result.json().get('data', {}).get('stixCyberObservables', {}).get('edges', [])
-    #             if data:
-    #                 ioc = data[0]['node']
-    #                 self.log.info(f"IOC exists: {ioc}")
-    #                 return ioc  # IOC exists
-    #             else:
-    #                 self.log.info("IOC does not exist")
-    #                 return None  # IOC does not exist
-    #         else:
-    #             self.log.error("Failed to check IOC existence")
-    #             return None
-    #     except ValueError as e:
-    #         self.log.error(f"Check IOC existence failed: {str(e)}")
-    #         return None
-
     def create_ioc(self):
         ioc_type = self.ioc.ioc_type.type_name
         ioc_value = self.ioc.ioc_value
@@ -330,68 +263,6 @@ class OpenCTIHandler:
             self.log.error(f"Create IOC failed: {str(e)}")
             return {'ERROR': str(e)}
 
-    # def create_ioc(self):
-    #     """
-    #     Creates an IOC in OpenCTI based on self.ioc.
-
-    #     Returns:
-    #         dict: The created OpenCTI observable node if successful, None otherwise.
-    #     """
-
-    #     ioc_type_name = self.ioc.ioc_type.type_name
-    #     config = self.ATTRIBUTE_CONFIG.get(ioc_type_name)
-
-    #     if not config:
-    #         self.log.error(f"Unsupported IOC type: {ioc_type_name} for IOC value {self.ioc.ioc_value} during creation.")
-    #         return None
-
-    #     variables = {
-    #         "type": config['create_type_conversion'],
-    #         # "x_opencti_description": f"Iris IOC: {self.ioc.ioc_value}", # Optional: add description
-    #         # "x_opencti_score": 50, # Default score, adjust as needed
-    #     }
-
-    #     observable_payload_key = config['create_type_conversion']
-
-    #     if config.get('is_hash', False):
-    #         variables[observable_payload_key] = {
-    #             'hashes': {
-    #                 config['upload_type']: self.ioc.ioc_value
-    #             }
-    #             # 'name': self.ioc.ioc_value, # Optional: if StixFile needs a name distinct from hash #TODO: Check if needed
-    #         }
-    #     else:
-    #         variables[observable_payload_key] = {
-    #             'value': self.ioc.ioc_value,
-    #         }
-
-    #     self.log.info(f"Creating OpenCTI IOC for '{self.ioc.ioc_value}' (Type: {ioc_type_name}).")
-    #     data = self._execute_graphql_query(self.CREATE_IOC_QUERY, variables)
-    #     self.log.debug(f"OpenCTI create IOC response: {data}")
-
-    #     if data and data.get('stixCyberObservableAdd'):
-    #         created_ioc = data['stixCyberObservableAdd']
-    #         self.log.info(f"OpenCTI IOC (ID: {created_ioc.get('id')}) created successfully for '{self.ioc.ioc_value}'.")
-    #         return created_ioc
-
-    #     self.log.error(f"Failed to create OpenCTI IOC for '{self.ioc.ioc_value}'.")
-    #     return None
-
-    # def delete_ioc(self, ioc_id):
-    #     variables = {
-    #         "id": ioc_id,
-    #     }
-    #     try:
-    #         result = self.send_query(self.DELETE_IOC_QUERY, variables)
-    #         if result:
-    #             self.log.info(f"IOC deleted successfully {result.json()}")
-    #             return result.json().get('data', {}).get('stixCyberObservableEdit', {}).get('delete', False)
-    #         else:
-    #             return {'ERROR': 'Failed to delete IOC'}
-    #     except ValueError as e:
-    #         self.log.error(f"Delete IOC failed: {str(e)}")
-    #         return {'ERROR': str(e)}
-
     def delete_ioc(self, opencti_ioc_id: str):
         """
         Deletes an IOC from OpenCTI by its OpenCTI ID.
@@ -410,17 +281,11 @@ class OpenCTIHandler:
         self.log.info(f"Attempting to delete OpenCTI IOC ID: {opencti_ioc_id}.")
         data = self._execute_graphql_query(DELETE_IOC_QUERY, variables)
 
-        # The response for delete might vary. Some APIs return the ID, some a boolean, some nothing on success.
-        # Assuming success if 'data' is not None and no errors were logged by _execute_graphql_query.
-        # The original query expected `data.get('stixCyberObservableEdit', {}).get('delete', False)`
-        # If using `stixCyberObservableDelete`, it might just return the ID or be null on success.
-        # Adjust based on actual API behavior.
-        if data is not None: # Check if data is not None, implying the query itself was successful
-             # For `stixCyberObservableDelete(id: $id)`, a successful response might have `data.stixCyberObservableDelete` as the ID or null.
-            if data.get('stixCyberObservableDelete') is not None: # Or check if it's the ID
+
+        if data is not None:
+            if data.get('stixCyberObservableDelete') is not None:
                 self.log.info(f"OpenCTI IOC ID: {opencti_ioc_id} deletion command sent successfully.")
                 return True
-            # Fallback for the original edit-then-delete structure if used
             elif 'stixCyberObservableEdit' in data and data['stixCyberObservableEdit'].get('delete'):
                  self.log.info(f"OpenCTI IOC ID: {opencti_ioc_id} deletion via edit successful.")
                  return True
@@ -473,8 +338,7 @@ class OpenCTIHandler:
 
         variables = {"id": opencti_case_id}
         self.log.info(f"Attempting to delete OpenCTI case ID: {opencti_case_id}.")
-        #  check if the case exists before attempting deletion
-        existing_case = self.check_case_exists()
+        existing_case = self.check_case_exists() # TODO adapt result from this function return value
         data = self._execute_graphql_query(DELETE_CASE_QUERY, variables)
 
         if data and data.get('caseIncidentDelete'):
@@ -483,51 +347,6 @@ class OpenCTIHandler:
 
         self.log.error(f"Failed to delete OpenCTI case ID: {opencti_case_id}.")
         return False
-
-
-    # def create_case(self):
-    #     if not self.iris_case:
-    #         self.log.error("No case provided.")
-    #         return None
-
-    #     variables = {
-    #                 "input": {
-    #                     "created": self.iris_case.initial_date.isoformat() + 'Z' if self.iris_case.open_date else None,
-    #                     "name": self.iris_case.name,
-    #                     "description": self.iris_case.description,
-    #                 }
-    #             }
-
-    #     try:
-    #         result = self.send_query(self.CREATE_CASE_QUERY, variables)
-    #         if result:
-    #             self.log.info(f"Case created successfully {result.json()}")
-    #             return result.json().get('data', {}).get('caseIncidentAdd', {})
-    #         else:
-    #             return None
-    #     except ValueError as e:
-    #         self.log.error(f"Create case failed: {str(e)}")
-    #         return None
-
-    # def create_relationship(self, from_id, to_id, relationship_type = "object"):
-    #     variables = {
-    #             "id": from_id,
-    #             "input": {
-    #                 "toId": to_id,
-    #                 "relationship_type": relationship_type
-    #             }
-    #     }
-    #     try:
-    #         result = self.send_query(self.CREATE_RELATIONSHIP_QUERY, variables)
-    #         if result:
-    #             self.log.info(f"Relationship created successfully {result.json()}")
-    #             # return result.json().get('data', {}).get('stixCoreRelationshipAdd', {})
-    #             return None
-    #         else:
-    #             return None
-    #     except ValueError as e:
-    #         self.log.error(f"Create relationship failed: {str(e)}")
-    #         return None
 
     def create_relationship(self, case_id: str, ioc_id: str, relationship_type: str = "object"):
         """
@@ -585,34 +404,6 @@ class OpenCTIHandler:
 
         self.log.error(f"Failed to remove relationship from {case_id} to {ioc_id}.")
         return None
-
-
-    # def compare_ioc(self, opencti_case_id):
-    #     if not self.iris_case:
-    #         self.log.error("No case provided.")
-    #         return None
-
-    #     self.list_ioc = get_detailed_iocs(self.iris_case.case_id)
-    #     if not self.list_ioc:
-    #         self.log.info("No IOC to compare.")
-    #         return None
-
-    #     iris_ioc_values = [ioc.ioc_value for ioc in self.list_ioc]
-
-    #     variables = {
-    #         "id": opencti_case_id
-    #     }
-    #     opencti_iocs = self.send_query(self.LIST_IOC_FROM_CASE_QUERY, variables)
-    #     if opencti_iocs:
-    #         opencti_iocs = opencti_iocs.json().get('data', {}).get('container', {}).get('objects', {}).get('edges', [])
-    #     else:
-    #         self.log.error("Failed to list IOC from OpenCTI")
-
-    #     for ioc in opencti_iocs:
-    #         opencti_ioc_value = ioc['node'].get('observable_value') or ioc['node'].get('name')
-    #         if opencti_ioc_value not in iris_ioc_values:
-    #             self.log.info(f"IOC {opencti_ioc_value} exists in OpenCTI but not in IRIS, deleting it.")
-    #             self.delete_ioc(ioc['node']['id']) #TODO: Check before deleting, if it is not used in another case AND was implemented by IRIS. If not, just remove relationship
 
     def compare_ioc(self, opencti_case_id: str):
         """
@@ -675,9 +466,6 @@ class OpenCTIHandler:
             if opencti_ioc_value not in iris_ioc_values:
                 self.log.info(f"IOC '{opencti_ioc_value}' (ID: {opencti_ioc_id}) exists in OpenCTI case "
                               f"but not in Iris case '{self.iris_case.name}'. Attempting deletion.")
-                # TODO: Check before deleting, if it is not used in another case AND was implemented by IRIS.
-                # This is a complex check and might require additional logic or OpenCTI API capabilities.
-                # For now, proceeding with deletion from the current case context.
                 if self.check_ioc_ownership(opencti_ioc):
                     self.delete_ioc(opencti_ioc_id)
                 else:

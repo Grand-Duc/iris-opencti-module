@@ -9,7 +9,7 @@ This module is designed to facilitate the integration of IRIS with OpenCTI, enab
 ## Installation
 1. Clone the repository:
    ```bash
-   git clone
+   git clone https://github.com/Grand-Duc/iris-opencti-module.git
     ```
 2. Compile the module using the buildnpush2iris.sh script:
     ```bash
@@ -64,7 +64,6 @@ Because IRIS does not send the former value of the observable, the module will c
 From most probably to least probable, here are the future work that could be done on this module:
 ### Short Term
 - Add way more observables types and regex for multi value IoCs (e.g. filename|md5).
-- Properly delete case by removing realationships and observables in OpenCTI.
 - Add observable creation in comparison (in case an OpenCTI observable was deleted but still present in the IRIS case).
 - Add optional configuration to decide is IRIS has priority over OpenCTI on deletion of observables.
 ### Long Term
