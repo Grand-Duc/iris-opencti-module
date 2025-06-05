@@ -1,5 +1,6 @@
 import requests
 from iris_opencti_module.opencti_handler.query import *
+from iris_opencti_module.opencti_handler.opencti_stix_cyber_observable import make_query
 from app.models.cases import Cases
 from app.datamgmt.case.case_iocs_db import get_detailed_iocs
 
@@ -9,51 +10,126 @@ class OpenCTIHandler:
 
     HASH_TYPES = ['md5', 'sha1', 'sha256', 'sha512']
     IP_TYPES = ['ip-any', 'ip-dst', 'ip-src']
-
-    ATTRIBUTE_CONFIG = {
-        hash: {
-            'key_conversion': f'hashes.{hash.upper()}',
-            'type_conversion': 'File',
-            'create_type_conversion': 'StixFile',
-            'other_type_conversion': 'StixFile',
-        } for hash in HASH_TYPES
-    }
-    ATTRIBUTE_CONFIG.update({
-        ip: {
-            'key_conversion': 'value',
-            'type_conversion': 'IPv4-Addr',
-            'create_type_conversion': 'IPv4-Addr',
-            'other_type_conversion': 'IPv4Addr',
-        } for ip in IP_TYPES
-    })
+    EMAIL_TYPES = ['email-src', 'email-dst']
+    EMAIL_DISPLAY_NAMES = ['email-src-display-name', 'email-dst-display-name']
+    X509_TYPES = ['x509-fingerprint-md5', 'x509-fingerprint-sha1', 'x509-fingerprint-sha256']
 
 
-    ATTRIBUTE_CONFIG.update({
-        'url': {
-            'key_conversion': 'value',
-            'type_conversion': 'Url',
-            'create_type_conversion': 'Url',
-            'other_type_conversion': 'Url',
-        },
-        'domain': {
-            'key_conversion': 'value',
-            'type_conversion': 'Domain-Name',
-            'create_type_conversion': 'DomainName',
-            'other_type_conversion': 'DomainName',
-        },
-        'md5': {
-            'upload_type': 'MD5',
+    ATTRIBUTE_CONFIG = { # key -> type.attribute (except for hashes and extensions)
+        'md5': { 
+            'key' : 'File.hashes.MD5'
+            # Hashes type need to be UPPERCASE to match OpenCTI's expected format for key filtering
+            # (For IOC creation, hashes are correctly put in lowercase)
         },
         'sha1': {
-            'upload_type': 'SHA-1',
+            'key': 'File.hashes.SHA-1',
         },
         'sha256': {
-            'upload_type': 'SHA-256',
+            'key': 'File.hashes.SHA-256',
         },
-        'sha512': {
-            'upload_type': 'SHA-512',
+        # 'sha512': {
+        #     'key': 'file.hashes.SHA-512', # TODO: check if this is supported by OpenCTI
+        # },
+        'ip-any': {
+            'key': 'IPv4-Addr.value',
         },
-    })
+        'ip-src': {
+            'key': 'IPv4-Addr.value',
+        },
+        'ip-dst': {
+            'key': 'IPv4-Addr.value',
+        },
+        'email-src': {
+            'key': 'Email-Addr.value',
+        },
+        'email-dst': {
+            'key': 'Email-Addr.value',
+        },
+        'email-src-display-name': { #TODO handle only if also email-src is present
+            'key': 'Email-Addr.display_name',
+        },
+        'email-dst-display-name': { #TODO handle only if also email-dst is present
+            'key': 'Email-Addr.display_name',
+        },
+        'domain': {
+            'key': 'Domain-Name.value',
+        },
+        'filename': {
+            'key': 'File.name',
+        },
+        'AS': {
+            'key': 'Autonomous-System.number',
+        },
+        "hostname": {
+            'key': 'Hostname.value',
+        },
+        'btc': {
+            'key': 'Cryptocurrency-Wallet.value',
+        },
+        'url': {
+            'key': 'Url.value',
+        },
+        'uri': {
+            'key': 'Url.value',
+        },
+        "user-agent": {
+            'key': 'User-Agent.value',
+        },
+        "pgp-private-key": {
+            'key': 'Cryptographic-Key.value',
+        },
+        "pgp-public-key": {
+            'key': 'Cryptographic-Key.value',
+        },
+        "file-path": {
+            'key': 'Directory.path',
+        },
+        "email-body": {
+            'key': 'Email-Message.body',
+        },
+        "email-mime-boundary": { #TODO doesn't work
+            'key': 'Email-Mime-Part-Type.body',
+        },
+        "mime-type": { #TODO doesn't work -> artefacts needs hashs etc.
+            'key': 'Artifact.mime_type',
+        },
+        "x509-fingerprint-md5": {
+            'key': 'X509-Certificate.hashes.MD5',
+        },
+        "x509-fingerprint-sha1": {
+            'key': 'X509-Certificate.hashes.SHA-1',
+        },
+        "x509-fingerprint-sha256": {
+            'key': 'X509-Certificate.hashes.SHA-256',
+        },
+        "mac-address": {
+            'key': 'Mac-Addr.value',
+        },
+        "mutex": {
+            'key': 'Mutex.name',
+        },
+        "malware-type": {
+            'key': 'Software.name',
+        },
+        "malware-sample": {
+            'key': 'Software.name',
+        },
+        "target-user":{
+            'key': 'User-Account.user_id',
+        },
+        "account":{
+            'key': 'User-Account.user_id',
+        },
+        "regkey": {
+            'key': 'Windows-Registry-Key.key',
+        },
+        "text": {
+            'key': 'Text.value',
+        },
+        "phone-number": {
+            'key': 'Phone-Number.value',
+        },
+    }
 
 
     def __init__(self, mod_config, logger, ioc = None):
@@ -203,22 +279,24 @@ class OpenCTIHandler:
         Returns:
             dict: The OpenCTI observable node if it exists, None otherwise.
         """
-
         ioc_type_name = self.ioc.ioc_type.type_name
-        config = self.ATTRIBUTE_CONFIG.get(ioc_type_name)
+        CONFIG = self.ATTRIBUTE_CONFIG[ioc_type_name]
 
-        if not config:
+        if not CONFIG:
             self.log.error(f"Unsupported IOC type: {ioc_type_name} for IOC value {self.ioc.ioc_value}")
             return None
 
+        type, _, attribute = CONFIG.get('key').partition(".")
+
         variables = {
-            "types": [config['type_conversion']],
+            "types": [type],
             "filters": {
                 "mode": "and",
-                "filters": [{"key": config['key_conversion'], "values": [self.ioc.ioc_value]}],
+                "filters": [{"key": attribute, "values": [self.ioc.ioc_value]}],
                 "filterGroups": []
             }
         }
+        self.log.info(f"variables: {variables}")
         self.log.info(f"Checking if OpenCTI IOC '{self.ioc.ioc_value}' (Type: {ioc_type_name}) exists.")
         data = self._execute_graphql_query(CHECK_IOC_EXISTS_QUERY, variables)
 
@@ -231,26 +309,12 @@ class OpenCTIHandler:
         return None
 
     def create_ioc(self):
-        ioc_type = self.ioc.ioc_type.type_name
-        ioc_value = self.ioc.ioc_value
-        variables = {
-            "type": self.ATTRIBUTE_CONFIG[ioc_type].get('create_type_conversion', 'None'),
-        }
-        variable_type = self.ATTRIBUTE_CONFIG[ioc_type].get('other_type_conversion', 'None')
-        if variable_type == 'StixFile':
-            variables['StixFile'] = {
-                'name': ioc_value,
-                'hashes': {
-                    "algorithm" : self.ATTRIBUTE_CONFIG[ioc_type].get('upload_type'),
-                    "hash": ioc_value
-                },
-            }
-        else:
-            variables[variable_type] = {
-                'value': ioc_value,
-            }
-        self.log.info(
-            f"Creating IOC with type: {variables}")
+
+        simple_observable_value = self.ioc.ioc_value
+        CONFIG = self.ATTRIBUTE_CONFIG[self.ioc.ioc_type.type_name]
+        simple_observable_key = CONFIG.get('key', 'None')
+        variables = make_query(simple_observable_key=simple_observable_key, simple_observable_value=simple_observable_value)
+        self.log.info(f"Variables: {variables}")
         try:
             result = self._execute_graphql_query(CREATE_IOC_QUERY, variables)
             if result:
@@ -469,7 +533,7 @@ class OpenCTIHandler:
                 if self.check_ioc_ownership(opencti_ioc):
                     self.delete_ioc(opencti_ioc_id)
                 else:
-                    self.remove_relationship(opencti_case_id, opencti_ioc_id, "object") #TODO
+                    self.remove_relationship(opencti_case_id, opencti_ioc_id, "object")
 
     def check_ioc_ownership(self, opencti_ioc, mode = 'strict'):
         """
