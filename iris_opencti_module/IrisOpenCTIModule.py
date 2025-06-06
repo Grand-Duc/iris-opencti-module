@@ -18,7 +18,6 @@ class IrisOpenCTIModule(IrisModuleInterface):
     _module_type = interface_conf.module_type
 
 
-
     def register_hooks(self, module_id: int):
         self.module_id = module_id
         module_conf = self.module_dict_conf
@@ -55,7 +54,7 @@ class IrisOpenCTIModule(IrisModuleInterface):
             'on_postload_ioc_update': self._process_ioc_update,
             'on_postload_ioc_delete': self._process_ioc_deletion,
             'on_postload_case_create': self._process_case_creation,  # Reusing IOC creation logic for case creation
-            # 'on_postload_case_update': self._process_case_update,  # Reusing IOC update logic for case update
+            'on_postload_case_update': self._process_case_update,  # Reusing IOC update logic for case update
             'on_postload_case_delete': self._process_case_deletion,  # Reusing IOC deletion logic for case deletcase
         }
 
@@ -117,19 +116,23 @@ class IrisOpenCTIModule(IrisModuleInterface):
         self.log.info("Case deletion processing complete.")
         return InterfaceStatus.I2Success(data=case_numbers, logs=list(self.message_queue))
 
+    def _process_case_update(self, cases) -> InterfaceStatus.IIStatus:
+        opencti_handler = OpenCTIHandler(mod_config=self._dict_conf, logger=self.log)
+        # TODO
+        return InterfaceStatus.I2Success(data=cases, logs=list(self.message_queue))
+
+
     def _process_ioc_creation(self, iocs) -> InterfaceStatus.IIStatus:
+        opencti_handler = OpenCTIHandler(mod_config=self._dict_conf, logger=self.log)
         for ioc in iocs:
             self.log.info(f"Processing IOC creation for: {ioc.ioc_value} (Type: {ioc.ioc_type.type_name}, Case: {ioc.case.name if ioc.case else 'N/A'})")
             try:
-                opencti_handler = OpenCTIHandler(mod_config=self._dict_conf, logger=self.log, ioc=ioc)
+                opencti_handler.ioc = ioc
+                opencti_handler.iris_case = ioc.case
                 opencti_case = opencti_handler.check_and_create_case()
-                # opencti_case = opencti_handler.check_case_exists()
-
-                # if not opencti_case:
-                #     self.log.info(f"OpenCTI case for IRIS case '{ioc.case.name if ioc.case else 'N/A'}' not found, attempting creation.")
-                #     opencti_case = opencti_handler.create_case()
 
                 opencti_observable = opencti_handler.check_ioc_exists()
+                # opencti_observable = None #TODO remove
                 if not opencti_observable:
                     self.log.info(f"OpenCTI observable for IOC '{ioc.ioc_value}' not found, attempting creation.")
                     opencti_observable = opencti_handler.create_ioc() # Uses self.ioc from handler
@@ -137,7 +140,13 @@ class IrisOpenCTIModule(IrisModuleInterface):
                         self.log.error(f"Failed to create or find OpenCTI observable for IOC '{ioc.ioc_value}'. Skipping relationship.")
                         continue
                 else:
+                    # If observable already exists, it must have been either already present in OpenCTI OR modified by IRIS. (e.g. -> TLP, description, etc.)
+                    # Even if we can re-create the same IOC it has a major flaws which is that you cannot lower the TLP with a creation (the higher TLP will stay).
+                    # That's why an UPDATE is made instead of a CREATION.
                     self.log.info(f"OpenCTI observable (ID: {opencti_observable.get('id')}) for IOC '{ioc.ioc_value}' found.")
+                    if opencti_handler.check_ioc_ownership(opencti_observable):
+                        opencti_observable = opencti_handler.update_ioc(opencti_ioc_id = opencti_observable.get('id'))
+
                     # TODO: IOC already exists, handle accordingly = link to the IR case (this is done next)
 
                 if opencti_case and opencti_observable:
@@ -168,10 +177,11 @@ class IrisOpenCTIModule(IrisModuleInterface):
             opencti_handler.ioc = ioc
             opencti_handler.iris_case = ioc.case
             try:
-                opencti_case = opencti_handler.check_case_exists()
-                if opencti_case and opencti_case.get('id'):
-                    self.log.info(f"OpenCTI case (ID: {opencti_case.get('id')}) found for IOC {ioc.ioc_value}. Proceeding with comparison.")
-                    opencti_handler.compare_ioc(opencti_case_id=opencti_case.get('id'))
+                if not opencti_handler.opencti_case:
+                    opencti_handler.opencti_case = opencti_handler.check_case_exists()
+                if opencti_handler.opencti_case and opencti_handler.opencti_case.get('id'):
+                    self.log.info(f"OpenCTI case (ID: {opencti_handler.opencti_case.get('id')}) found for IOC {ioc.ioc_value}. Proceeding with comparison.")
+                    opencti_handler.compare_ioc(opencti_case_id=opencti_handler.opencti_case.get('id'))
                 else:
                     self.log.warning(f"No OpenCTI case found for IOC {ioc.ioc_value} during update's comparison phase. Skipping comparison.")
 

@@ -1,35 +1,3 @@
-# CHECK_IOC_EXISTS_QUERY = """
-#     query StixCyberObservables($types: [String], $filters: FilterGroup) {
-#                         stixCyberObservables(types: $types, filters: $filters) {
-#                             edges {
-#                                 node {
-#                                     id
-#                                     entity_type
-#                                     x_opencti_score
-#                                     createdBy {
-#                                         id
-#                                         name
-#                                         created
-#                                         modified
-#                                     }
-#                                     observable_value
-#                                     objectLabel {
-#                                         id
-#                                         value
-#                                     }
-#                             }
-#                         }
-#                         pageInfo {
-#                             startCursor
-#                             endCursor
-#                             hasNextPage
-#                             hasPreviousPage
-#                             globalCount
-#                         }
-#                     }
-#                 }
-#     """
-
 GET_API_USER_QUERY = """
     query Me {
         me {id name }
@@ -141,27 +109,29 @@ CREATE_IOC_QUERY = """
     }
 """
 
-DELETE_IOC_QUERY = """
-    mutation StixCyberObservableEdit($id: ID!) {
-                    stixCyberObservableEdit(id: $id) {
-                        delete
-                    }
-                }
+UPDATE_IOC_QUERY = """
+    mutation StixCyberObservableEdit($id: ID!, $input: [EditInput]!) {
+        stixCyberObservableEdit(id: $id) {
+            fieldPatch(input: $input) {
+            id
+            standard_id
+            entity_type
+            observable_value
+            objectMarking { id definition }
+            x_opencti_description
+            }
+        }
+    }
 """
 
-# CHECK_CASE_EXISTS_QUERY = """
-#     query CaseIncidents($filters: FilterGroup, $search: String, $first: Int, $after: ID, $orderBy: CaseIncidentsOrdering, $orderMode: OrderingMode) {
-#         caseIncidents(
-#             filters: $filters
-#         ) {
-#             edges {
-#             node {
-#                 id
-#             }
-#             }
-#         }
-#     }
-# """
+DELETE_IOC_QUERY = """
+    mutation StixCyberObservableEdit($id: ID!) {
+        stixCyberObservableEdit(id: $id) {
+            delete
+        }
+    }
+"""
+
 CHECK_CASE_EXISTS_QUERY = """
     query CaseIncidents($filters: FilterGroup) {
         caseIncidents(filters: $filters) {
@@ -183,25 +153,10 @@ DELETE_CASE_QUERY = """
     }
 """
 
-# CREATE_RELATIONSHIP_QUERY = """
-#     mutation ContainerAddStixCoreObjectsLinesRelationAddMutation($id: ID!, $input: StixRefRelationshipAddInput!, $commitMessage: String, $references: [String]) {
-#         containerEdit(id: $id) {
-#             relationAdd(
-#             input: $input
-#             commitMessage: $commitMessage
-#             references: $references
-#             ) {
-#             id
-#             }
-#         }
-#     }
-# """
 CREATE_RELATIONSHIP_QUERY = """
     mutation ContainerEditRelationAdd($id: ID!, $input: StixRefRelationshipAddInput!) {
         containerEdit(id: $id) {
-            relationAdd(input: $input) {
-                id
-            } 
+            relationAdd(input: $input) { id } 
         }
     }
 """
@@ -216,28 +171,6 @@ REMOVE_RELATIONSHIP_QUERY = """
     }
 """
 
-# LIST_IOC_FROM_CASE_QUERY = """
-#     query ContainerHeaderObjectsQuery($id: String!) {
-#         container(id: $id) {
-#             objects(all: true) {
-#             edges {
-#                 node {
-#                 ... on BasicObject {
-#                     id
-#                 }
-#                 ... on Indicator {
-#                     name
-#                     id
-#                 }
-#                 ... on StixCyberObservable {
-#                     observable_value
-#                 }
-#                 }
-#             }
-#             }
-#         }
-#     }
-# """
 LIST_IOC_FROM_CASE_QUERY = """
     query ContainerObjects($id: String!) {
         container(id: $id) {
@@ -253,3 +186,13 @@ LIST_IOC_FROM_CASE_QUERY = """
         }
     }
 """
+
+LIST_MARKING_DEFINITIONS_QUERY = """
+query MarkingDefinitions($filters: FilterGroup) {
+  markingDefinitions(filters: $filters) {
+    edges { node { id definition } }
+  }
+}
+"""
+
+

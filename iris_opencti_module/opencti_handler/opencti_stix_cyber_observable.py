@@ -3,7 +3,7 @@ def make_query(**kwargs):
     simple_observable_id = kwargs.get("simple_observable_id", None)
     simple_observable_key = kwargs.get("simple_observable_key", None)
     simple_observable_value = kwargs.get("simple_observable_value", None)
-    # simple_observable_description = kwargs.get("simple_observable_description", None)
+    simple_observable_description = kwargs.get("simple_observable_description", None)
     x_opencti_score = kwargs.get("x_opencti_score", None)
     object_marking = kwargs.get("objectMarking", None)
     object_label = kwargs.get("objectLabel", None)
@@ -63,6 +63,10 @@ def make_query(**kwargs):
     elif type.lower() == "text" or type.lower() == "x-opencti-text":
         type = "Text"
 
+    if "x_opencti_description" in observable_data:
+            x_opencti_description = observable_data["x_opencti_description"]
+    else:
+        x_opencti_description = ""
 
     if "x_opencti_score" in observable_data:
         x_opencti_score = observable_data["x_opencti_score"]
@@ -70,6 +74,9 @@ def make_query(**kwargs):
         x_opencti_score = (
             x_opencti_score if x_opencti_score is not None else 50
         )
+
+    if simple_observable_description is not None:
+        x_opencti_description = simple_observable_description
 
     stix_id = observable_data["id"] if "id" in observable_data else None
     if simple_observable_id is not None:
@@ -100,7 +107,7 @@ def make_query(**kwargs):
             "type": type,
             "stix_id": stix_id,
             "x_opencti_score": x_opencti_score,
-            # "x_opencti_description": x_opencti_description,
+            "x_opencti_description": x_opencti_description,
             "createIndicator": create_indicator,
             # "createdBy": created_by,
             "objectMarking": object_marking,

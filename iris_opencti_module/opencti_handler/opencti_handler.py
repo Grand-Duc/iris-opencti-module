@@ -1,7 +1,6 @@
 import requests
 from iris_opencti_module.opencti_handler.query import *
 from iris_opencti_module.opencti_handler.opencti_stix_cyber_observable import make_query
-from app.models.cases import Cases
 from app.datamgmt.case.case_iocs_db import get_detailed_iocs
 
 
@@ -140,6 +139,7 @@ class OpenCTIHandler:
         self.ioc = ioc
         self.iris_case = ioc.case if ioc and hasattr(ioc, 'case') else None
         self.api_user_id = self.get_api_user().get('id')
+        self.opencti_case = None
 
     def _execute_graphql_query(self, query: str, variables: dict = None):
         """
@@ -313,7 +313,13 @@ class OpenCTIHandler:
         simple_observable_value = self.ioc.ioc_value
         CONFIG = self.ATTRIBUTE_CONFIG[self.ioc.ioc_type.type_name]
         simple_observable_key = CONFIG.get('key', 'None')
-        variables = make_query(simple_observable_key=simple_observable_key, simple_observable_value=simple_observable_value)
+        object_marking = self.get_marking(self.ioc.tlp.tlp_name) if self.ioc.tlp else None
+        simple_observable_description = self.ioc.ioc_description if self.ioc.ioc_description else None
+
+        variables = make_query(simple_observable_key=simple_observable_key,
+                               simple_observable_value=simple_observable_value,
+                               objectMarking=object_marking,
+                               simple_observable_description=simple_observable_description)
         self.log.info(f"Variables: {variables}")
         try:
             result = self._execute_graphql_query(CREATE_IOC_QUERY, variables)
@@ -326,6 +332,58 @@ class OpenCTIHandler:
         except ValueError as e:
             self.log.error(f"Create IOC failed: {str(e)}")
             return {'ERROR': str(e)}
+
+    def update_ioc(self, opencti_ioc_id: str):
+        """
+        Updates an existing IOC in OpenCTI with the current IOC variable (description, objectmarking).
+
+        Args:
+            opencti_ioc_id (str): The ID of the OpenCTI observable to update.
+
+        Returns:
+            dict: The updated OpenCTI observable node if successful, None otherwise.
+        """
+        if not opencti_ioc_id:
+            self.log.error("OpenCTI IOC ID is required for update.")
+            return None
+
+        variables = {
+            "id": opencti_ioc_id,
+            "input": []
+        }
+
+        if self.ioc.ioc_description:
+            variables["input"].append({
+                "key": "x_opencti_description",
+                "value": self.ioc.ioc_description
+            })
+        if self.ioc.tlp:
+            object_marking = self.get_marking(self.ioc.tlp.tlp_name)
+            if object_marking:
+                variables["input"].append({
+                    "key": "objectMarking",
+                    "value": [object_marking]
+                })
+        if not variables["input"]:
+            self.log.info("No updates to apply to the IOC. Skipping update.")
+            return None
+        self.log.info(f"Updating OpenCTI IOC ID: {opencti_ioc_id} with input: {variables['input']}")
+        try:
+            result = self._execute_graphql_query(UPDATE_IOC_QUERY, variables)
+            if result and result.get('stixCyberObservableEdit'):
+                updated_ioc = result['stixCyberObservableEdit'].get('fieldPatch')
+                if updated_ioc:
+                    self.log.info(f"OpenCTI IOC ID: {opencti_ioc_id} updated successfully.")
+                    return updated_ioc
+                else:
+                    self.log.error("Update IOC failed: No fieldPatch in response.")
+                    return None
+            else:
+                self.log.error("Update IOC failed: No stixCyberObservableEdit in response.")
+                return None
+        except ValueError as e:
+            self.log.error(f"Update IOC failed: {str(e)}")
+            return None
 
     def delete_ioc(self, opencti_ioc_id: str):
         """
@@ -553,3 +611,27 @@ class OpenCTIHandler:
                 self.log.warning(f"IOC {opencti_ioc.get('observable_value')} is owned by another user (ID: {owner_id}). Cannot delete.")
                 return False
         return True
+
+    def get_marking(self, tlp):
+        variable = {
+            "filters": {
+                "mode": "and",
+                "filters": [
+                {
+                    "key": "definition",
+                    "values": [
+                    f"TLP:{tlp.upper()}"
+                    ]
+                }
+                ],
+                "filterGroups": []
+            }
+        }
+        markings = self._execute_graphql_query(LIST_MARKING_DEFINITIONS_QUERY, variable)
+        if markings and markings.get('markingDefinitions') and markings['markingDefinitions'].get('edges'):
+            marking_edges = markings['markingDefinitions']['edges']
+            for edge in marking_edges:
+                tlp_result = edge.get('node')
+                self.log.info(f"Retrieved {tlp_result.get('definition')} marking definitions from OpenCTI.")
+                return tlp_result.get('id')
+        return None
