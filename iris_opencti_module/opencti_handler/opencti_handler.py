@@ -2,6 +2,7 @@ import requests
 from iris_opencti_module.opencti_handler.query import *
 from iris_opencti_module.opencti_handler.opencti_stix_cyber_observable import make_query
 from app.datamgmt.case.case_iocs_db import get_detailed_iocs
+from app.datamgmt.case.case_iocs_db import get_tlps_dict
 
 
 
@@ -296,7 +297,6 @@ class OpenCTIHandler:
                 "filterGroups": []
             }
         }
-        self.log.info(f"variables: {variables}")
         self.log.info(f"Checking if OpenCTI IOC '{self.ioc.ioc_value}' (Type: {ioc_type_name}) exists.")
         data = self._execute_graphql_query(CHECK_IOC_EXISTS_QUERY, variables)
 
@@ -309,7 +309,11 @@ class OpenCTIHandler:
         return None
 
     def create_ioc(self):
-
+        """
+        Creates a new IOC in OpenCTI based on the current IOC variable (self.ioc).
+        Returns:
+            dict: The created OpenCTI observable node if successful, None otherwise.
+        """
         simple_observable_value = self.ioc.ioc_value
         CONFIG = self.ATTRIBUTE_CONFIG[self.ioc.ioc_type.type_name]
         simple_observable_key = CONFIG.get('key', 'None')
@@ -320,7 +324,6 @@ class OpenCTIHandler:
                                simple_observable_value=simple_observable_value,
                                objectMarking=object_marking,
                                simple_observable_description=simple_observable_description)
-        self.log.info(f"Variables: {variables}")
         try:
             result = self._execute_graphql_query(CREATE_IOC_QUERY, variables)
             if result:
@@ -608,7 +611,7 @@ class OpenCTIHandler:
             if mode != 'strict' and owner_id == self.api_user_id:
                 return True
             if owner_id != self.api_user_id:
-                self.log.warning(f"IOC {opencti_ioc.get('observable_value')} is owned by another user (ID: {owner_id}). Cannot delete.")
+                self.log.warning(f"IOC {opencti_ioc.get('observable_value')} is owned by another user (ID: {owner_id}).")
                 return False
         return True
 
@@ -635,3 +638,31 @@ class OpenCTIHandler:
                 self.log.info(f"Retrieved {tlp_result.get('definition')} marking definitions from OpenCTI.")
                 return tlp_result.get('id')
         return None
+    
+    def get_iris_marking(self, tlp, from_opencti=True):
+        """
+        Retrieves the IRIS marking for a given OpenCTI TLP level.
+
+        Args:
+            tlp (str): The TLP level to retrieve the marking for.
+            from_opencti (bool): If True, retrieves the marking from OpenCTI naming convention,
+                                 otherwise uses the IRIS naming convention.
+        Returns:
+            str: The IRIS marking ID if found, None otherwise.
+        """
+
+        if not tlp:
+            self.log.error("TLP level is required to retrieve IRIS marking.")
+            return None
+
+        if from_opencti:
+            # OpenCTI uses TLP naming convention like TLP:CLEAR while IRIS uses TLP naming convention like clear. Change tlp from OpenCTI to IRIS.
+            tlp = tlp.lower().replace("tlp:", "")
+
+        # now look for the IRIS marking from Tlp object
+        iris_marking = get_tlps_dict().get(tlp)
+        if iris_marking:
+            return iris_marking
+        else:
+            self.log.error(f"No IRIS marking found for TLP '{tlp}'.")
+            return None

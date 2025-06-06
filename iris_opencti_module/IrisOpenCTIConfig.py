@@ -9,6 +9,39 @@ pipeline_support = False
 pipeline_info = {}
 
 module_configuration = [
+
+    # {
+    #     "param_name": "priority_on_delete",
+    #     "param_human_name": "DFIRI IRIS priority on delete action",
+    #     "param_description": "If set to true, IOC / Case delete on DFIR IRIS will also be deleted in OpenCTI evene if not created by IRIS.",
+    #     "default": False,
+    #     "mandatory": True,
+    #     "type": "bool"
+    # },
+    # {
+    #     "param_name": "priority_on_update",
+    #     "param_human_name": "DFIRI IRIS priority on update action",
+    #     "param_description": "If set to true, IOC / Case update on DFIR IRIS will also be updated in OpenCTI evene if not created by IRIS.",
+    #     "default": False,
+    #     "mandatory": True,
+    #     "type": "bool"
+    # },
+    {
+        "param_name": "opencti_api_key",
+        "param_human_name": "OpenCTI API Key",
+        "param_description": "OpenCTI API key",
+        "default": None,
+        "mandatory": True,
+        "type": "sensitive_string",
+    },
+    {
+        "param_name": "opencti_url",
+        "param_human_name": "OpenCTI URL",
+        "param_description": "OpenCTI URL",
+        "default": None,
+        "mandatory": True,
+        "type": "string",
+    },
     {
         "param_name": "opencti_on_ioc_create_hook_enabled",
         "param_human_name": "OpenCTI receive hook on IOC creation",
@@ -56,37 +89,5 @@ module_configuration = [
         "default": True,
         "mandatory": True,
         "type": "bool"
-    },
-    # {
-    #     "param_name": "priority_on_delete",
-    #     "param_human_name": "DFIRI IRIS priority on delete action",
-    #     "param_description": "If set to true, IOC / Case delete on DFIR IRIS will also be deleted in OpenCTI evene if not created by IRIS.",
-    #     "default": False,
-    #     "mandatory": True,
-    #     "type": "bool"
-    # },
-    # {
-    #     "param_name": "priority_on_update",
-    #     "param_human_name": "DFIRI IRIS priority on update action",
-    #     "param_description": "If set to true, IOC / Case update on DFIR IRIS will also be updated in OpenCTI evene if not created by IRIS.",
-    #     "default": False,
-    #     "mandatory": True,
-    #     "type": "bool"
-    # },
-    {
-      "param_name": "opencti_api_key",
-      "param_human_name": "OpenCTI API Key",
-      "param_description": "OpenCTI API key",
-      "default": None,
-      "mandatory": True,
-      "type": "sensitive_string"
-    },
-    {
-      "param_name": "opencti_url",
-      "param_human_name": "OpenCTI URL",
-      "param_description": "OpenCTI URL",
-      "default": None,
-      "mandatory": True,
-      "type": "string"
     },
 ]

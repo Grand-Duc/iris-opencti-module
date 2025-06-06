@@ -146,6 +146,19 @@ class IrisOpenCTIModule(IrisModuleInterface):
                     self.log.info(f"OpenCTI observable (ID: {opencti_observable.get('id')}) for IOC '{ioc.ioc_value}' found.")
                     if opencti_handler.check_ioc_ownership(opencti_observable):
                         opencti_observable = opencti_handler.update_ioc(opencti_ioc_id = opencti_observable.get('id'))
+                    else:
+                        score = opencti_observable.get('x_opencti_score')
+                        if score and f'OCTI_score:{score}' not in ioc.ioc_tags.split(','):
+                            self.log.info(f"Updating IOC tags for {ioc.ioc_value} with OpenCTI score: {opencti_observable}")
+                            ioc.ioc_tags = f"{ioc.ioc_tags},OCTI_score:{score}"
+                        if opencti_observable.get('objectMarking', []):
+                            iris_tlp = opencti_handler.get_iris_marking(opencti_observable.get('objectMarking')[0].get('definition'))
+                            if iris_tlp and iris_tlp != ioc.ioc_tlp_id:
+                                old_tlp = ioc.tlp.tlp_name if ioc.tlp else 'N/A'
+                                ioc.ioc_tlp_id = iris_tlp
+                                self.log.info(f"Updated IOC TLP for {ioc.ioc_value} from {old_tlp} to {ioc.tlp.tlp_name}.")
+
+
 
                     # TODO: IOC already exists, handle accordingly = link to the IR case (this is done next)
 
