@@ -5,7 +5,6 @@ from app.datamgmt.case.case_iocs_db import get_detailed_iocs
 from app.datamgmt.case.case_iocs_db import get_tlps_dict
 
 
-
 class OpenCTIHandler:
 
     HASH_TYPES = ['md5', 'sha1', 'sha256', 'sha512']
@@ -129,6 +128,10 @@ class OpenCTIHandler:
         "phone-number": {
             'key': 'Phone-Number.value',
         },
+        "regkey|value": { # since Windows-Registry-Key only supports key, we need to handle the value with Windows-Registry-Value-Type
+            "regkey" : { 'key': 'Windows-Registry-Value-Type.name', },
+            "value" : { 'key': 'Windows-Registry-Value-Type.data', }
+        },
     }
 
 
@@ -177,7 +180,7 @@ class OpenCTIHandler:
         except ValueError as e: # JSON decoding error
             self.log.error(f"Error decoding JSON response from OpenCTI: {e}")
         return None
-    
+
     def get_api_user(self):
         """
         Retrieves the API user information from OpenCTI.
@@ -281,22 +284,34 @@ class OpenCTIHandler:
             dict: The OpenCTI observable node if it exists, None otherwise.
         """
         ioc_type_name = self.ioc.ioc_type.type_name
-        CONFIG = self.ATTRIBUTE_CONFIG[ioc_type_name]
+        ioc_value = self.ioc.ioc_value
+        CONFIG = self.ATTRIBUTE_CONFIG.get(ioc_type_name, None)
 
-        if not CONFIG:
-            self.log.error(f"Unsupported IOC type: {ioc_type_name} for IOC value {self.ioc.ioc_value}")
-            return None
-
-        type, _, attribute = CONFIG.get('key').partition(".")
+        if '|' in ioc_type_name:
+            ioc_parts = ioc_type_name.split('|')
+            part = ioc_parts[0]
+            ioc_value = ioc_value.split('|')[0] if '|' in ioc_value else ioc_value
+            if CONFIG and part in CONFIG:
+                type, _, attribute = CONFIG.get(part).get('key').partition(".")
+            else:
+                key_part = self.ATTRIBUTE_CONFIG[part].get('key', None)
+                if key_part:
+                    type, _, attribute = self.ATTRIBUTE_CONFIG[part].get('key', None).partition(".")
+                else:
+                    self.log.error(f"Unsupported IOC type: {part} for IOC value {ioc_value}")
+                    return None
+        else:
+            type, _, attribute = CONFIG.get('key').partition(".")
 
         variables = {
             "types": [type],
             "filters": {
                 "mode": "and",
-                "filters": [{"key": attribute, "values": [self.ioc.ioc_value]}],
+                "filters": [{"key": attribute, "values": [ioc_value]}],
                 "filterGroups": []
             }
         }
+
         self.log.info(f"Checking if OpenCTI IOC '{self.ioc.ioc_value}' (Type: {ioc_type_name}) exists.")
         data = self._execute_graphql_query(CHECK_IOC_EXISTS_QUERY, variables)
 
@@ -314,16 +329,48 @@ class OpenCTIHandler:
         Returns:
             dict: The created OpenCTI observable node if successful, None otherwise.
         """
-        simple_observable_value = self.ioc.ioc_value
-        CONFIG = self.ATTRIBUTE_CONFIG[self.ioc.ioc_type.type_name]
-        simple_observable_key = CONFIG.get('key', 'None')
+        ioc_value = self.ioc.ioc_value
+        ioc_type = self.ioc.ioc_type.type_name
+        field_names = ioc_type.split('|')
+        CONFIG = self.ATTRIBUTE_CONFIG.get(ioc_type, None)
         object_marking = self.get_marking(self.ioc.tlp.tlp_name) if self.ioc.tlp else None
         simple_observable_description = self.ioc.ioc_description if self.ioc.ioc_description else None
+        if len(field_names) > 1:
+            ioc_value = ioc_value.split('|')
 
-        variables = make_query(simple_observable_key=simple_observable_key,
-                               simple_observable_value=simple_observable_value,
-                               objectMarking=object_marking,
-                               simple_observable_description=simple_observable_description)
+            observable_data = {}
+            for i, field_name in enumerate(field_names):
+                if not CONFIG or field_name not in CONFIG:
+                    details = self.ATTRIBUTE_CONFIG.get(field_name, {})
+                    if not details:
+                        self.log.error(f"Unsupported IOC field: {field_name} for IOC value {ioc_value[i]}")
+                        return None
+                else:
+                    details = CONFIG[field_name]
+
+                value = ioc_value[i]
+                parts = details.get('key').split('.')
+                if 'type' not in observable_data:
+                    observable_data['type'] = parts[0]
+                parts = parts[1:]
+                current = observable_data
+                for j, part in enumerate(parts):
+                    if j == len(parts) - 1:
+                        current[part] = value
+                    else:
+                        if part not in current:
+                            current[part] = {}
+                        current = current[part]
+
+            variables = make_query(observableData=observable_data,
+                            objectMarking=object_marking,
+                            simple_observable_description=simple_observable_description)
+        else:
+            simple_observable_key = CONFIG.get('key', 'None')
+            variables = make_query(simple_observable_key=simple_observable_key,
+                                simple_observable_value=ioc_value,
+                                objectMarking=object_marking,
+                                simple_observable_description=simple_observable_description)
         try:
             result = self._execute_graphql_query(CREATE_IOC_QUERY, variables)
             if result:
@@ -334,7 +381,7 @@ class OpenCTIHandler:
                 return None
         except ValueError as e:
             self.log.error(f"Create IOC failed: {str(e)}")
-            return {'ERROR': str(e)}
+            return None
 
     def update_ioc(self, opencti_ioc_id: str):
         """
@@ -559,7 +606,7 @@ class OpenCTIHandler:
             iris_ioc_values = set()
         else:
             iris_ioc_values = {ioc.ioc_value for ioc in iris_iocs_detailed}
-            self.log.debug(f"Iris IOC values for case '{self.iris_case.name}': {iris_ioc_values}")
+            self.log.info(f"Iris IOC values for case '{self.iris_case.name}': {iris_ioc_values}")
 
         variables = {"id": opencti_case_id}
         opencti_data = self._execute_graphql_query(LIST_IOC_FROM_CASE_QUERY, variables)
@@ -588,9 +635,13 @@ class OpenCTIHandler:
                 self.log.warning(f"Skipping OpenCTI IOC due to missing value or ID: {opencti_ioc}")
                 continue
 
-            if opencti_ioc_value not in iris_ioc_values:
+            is_present = False
+            for iris_ioc_value in iris_ioc_values:
+                if opencti_ioc_value in iris_ioc_value.split('|'): #TODO while this verification works, it will not work for iocs sharing a part of the value (e.g. domain|ip)
+                    is_present = True
+            if not is_present:
                 self.log.info(f"IOC '{opencti_ioc_value}' (ID: {opencti_ioc_id}) exists in OpenCTI case "
-                              f"but not in Iris case '{self.iris_case.name}'. Attempting deletion.")
+                            f"but not in Iris case '{self.iris_case.name}'. Attempting deletion.")
                 if self.check_ioc_ownership(opencti_ioc):
                     self.delete_ioc(opencti_ioc_id)
                 else:

@@ -49,6 +49,9 @@ Observables from DFIR IRIS are sent to OpenCTI. Theses observables are linked to
 Following variable are sent:
 - Observable value
 - Observable type
+Following variable are received:
+- Observable score (saved as tag)
+- Observable TLP is applied
 
 #### Observable Creation
 If the observable is not already present in OpenCTI, it will be created. A relationship is created between the observable and the case in OpenCTI.
@@ -63,7 +66,7 @@ Because IRIS does not send the former value of the observable, the module will c
 ## Future Work
 From most probably to least probable, here are the future work that could be done on this module:
 ### Short Term
-- Add observables types multi value IoCs (e.g. filename|md5).
+- Add observables types multi value IoCs (e.g. filename|md5). -> basic functionality already implemented.
 - Add observable creation in comparison (in case an OpenCTI observable was deleted but still present in the IRIS case).
 - Add optional configuration to decide is IRIS has priority over OpenCTI on deletion of observables.
 ### Long Term

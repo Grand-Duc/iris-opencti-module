@@ -574,7 +574,7 @@ def make_query(**kwargs):
                 ),
             }
         elif type == "Windows-Registry-Value-Type":
-            input_variables["WindowsRegistryKeyValueType"] = {
+            input_variables["WindowsRegistryValueType"] = {
                 "name": (
                     observable_data["name"] if "name" in observable_data else None
                 ),
