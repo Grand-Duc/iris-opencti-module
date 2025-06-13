@@ -8,19 +8,15 @@ CHECK_IOC_EXISTS_QUERY = """
     query StixCyberObservables($types: [String], $filters: FilterGroup) {
         stixCyberObservables(types: $types, filters: $filters) {
             edges {
-            node {
-                id
-                entity_type
-                observable_value
-                x_opencti_score
-                creators {
-                id
+                node {
+                    id
+                    entity_type
+                    observable_value
+                    x_opencti_score
+                    creators { id }
+                    objectMarking { id definition }
+                    objectLabel { value }
                 }
-                objectMarking {
-                id
-                definition
-                }
-            }
             }
             pageInfo {
             globalCount
@@ -137,6 +133,7 @@ UPDATE_IOC_QUERY = """
             x_opencti_description
             x_opencti_score
             creators { id }
+            objectLabel { value }
             }
         }
     }

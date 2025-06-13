@@ -132,7 +132,9 @@ class IrisOpenCTIModule(IrisModuleInterface):
                 opencti_case = opencti_handler.check_and_create_case()
 
                 opencti_observable = opencti_handler.check_ioc_exists()
-                # opencti_observable = None #TODO remove
+
+                ioc.ioc_tags = ','.join([tag for tag in ioc.ioc_tags.split(',') if not tag.startswith('OCTI_')])
+
                 if not opencti_observable:
                     self.log.info(f"OpenCTI observable for IOC '{ioc.ioc_value}' not found, attempting creation.")
                     opencti_observable = opencti_handler.create_ioc() # Uses self.ioc from handler
@@ -147,10 +149,19 @@ class IrisOpenCTIModule(IrisModuleInterface):
                     if opencti_handler.check_ioc_ownership(opencti_observable):
                         opencti_observable = opencti_handler.update_ioc(opencti_ioc_id = opencti_observable.get('id'))
                     else:
+                        self.log.info(f"OpenCTI observable (ID: {opencti_observable.get('id')}) for IOC '{ioc.ioc_value}' is not owned by IRIS. Updating tags and TLP.")
                         score = opencti_observable.get('x_opencti_score')
                         if score and f'OCTI_score:{score}' not in ioc.ioc_tags.split(','):
-                            self.log.info(f"Updating IOC tags for {ioc.ioc_value} with OpenCTI score: {opencti_observable}")
                             ioc.ioc_tags = f"{ioc.ioc_tags},OCTI_score:{score}"
+                        if opencti_observable.get('objectLabel', []):
+                            temp_tag = ''
+                            for label in opencti_observable.get('objectLabel'):
+                                tag = label.get('value', None)
+                                if tag and f'OCTI_tag:{tag}' not in ioc.ioc_tags.split(','):
+                                    temp_tag += f'OCTI_tag:{tag},'
+                            ioc.ioc_tags = f"{ioc.ioc_tags},{temp_tag}"
+                            self.log.info(f"Updated IOC tags for {ioc.ioc_value} to: {ioc.ioc_tags}")
+
                         if opencti_observable.get('objectMarking', []):
                             iris_tlp = opencti_handler.get_iris_marking(opencti_observable.get('objectMarking')[0].get('definition'))
                             if iris_tlp and iris_tlp != ioc.ioc_tlp_id:
@@ -158,16 +169,12 @@ class IrisOpenCTIModule(IrisModuleInterface):
                                 ioc.ioc_tlp_id = iris_tlp
                                 self.log.info(f"Updated IOC TLP for {ioc.ioc_value} from {old_tlp} to {ioc.tlp.tlp_name}.")
 
-
-
-                    # TODO: IOC already exists, handle accordingly = link to the IR case (this is done next)
-
                 if opencti_case and opencti_observable:
                     opencti_case_id = opencti_case.get('id')
                     observable_id = opencti_observable.get('id')
                     if opencti_case_id and observable_id:
                         self.log.info(f"Attempting to link OpenCTI case '{opencti_case_id}' with observable '{observable_id}'.")
-                        opencti_handler.create_relationship(case_id=opencti_case_id, ioc_id=observable_id, relationship_type="object") # Or "object"
+                        opencti_handler.create_relationship(case_id=opencti_case_id, ioc_id=observable_id, relationship_type="object")
                     else:
                         self.log.warning(f"Missing OpenCTI case ID or observable ID for IOC {ioc.ioc_value}. Cannot create relationship.")
                 else:
