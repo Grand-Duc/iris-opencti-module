@@ -29,6 +29,9 @@ class IrisOpenCTIModule(IrisModuleInterface):
             'opencti_on_case_create_hook_enabled': 'on_postload_case_create',
             'opencti_on_case_update_hook_enabled': 'on_postload_case_update',
             'opencti_on_case_delete_hook_enabled': 'on_postload_case_delete',
+            'opencti_on_case_create_hook_enabled': 'on_postload_asset_create',
+            'opencti_on_case_update_hook_enabled': 'on_postload_asset_update',
+            'opencti_on_case_delete_hook_enabled': 'on_postload_asset_delete',
         }
 
         for config_key, hook_name in HOOKS_CONFIG.items():
@@ -53,9 +56,12 @@ class IrisOpenCTIModule(IrisModuleInterface):
             'on_postload_ioc_create': self._process_ioc_creation,
             'on_postload_ioc_update': self._process_ioc_update,
             'on_postload_ioc_delete': self._process_ioc_deletion,
-            'on_postload_case_create': self._process_case_creation,  # Reusing IOC creation logic for case creation
-            'on_postload_case_update': self._process_case_update,  # Reusing IOC update logic for case update
-            'on_postload_case_delete': self._process_case_deletion,  # Reusing IOC deletion logic for case deletcase
+            'on_postload_case_create': self._process_case_creation,
+            'on_postload_case_update': self._process_case_update,
+            'on_postload_case_delete': self._process_case_deletion,
+            'on_postload_asset_create': self._process_asset_creation,
+            'on_postload_asset_update': self._process_asset_update,
+            'on_postload_asset_delete': self._process_asset_deletion,
         }
 
         processor_method = HOOK_PROCESSORS.get(hook_name)
@@ -174,7 +180,7 @@ class IrisOpenCTIModule(IrisModuleInterface):
                     observable_id = opencti_observable.get('id')
                     if opencti_case_id and observable_id:
                         self.log.info(f"Attempting to link OpenCTI case '{opencti_case_id}' with observable '{observable_id}'.")
-                        opencti_handler.create_relationship(case_id=opencti_case_id, ioc_id=observable_id, relationship_type="object")
+                        opencti_handler.create_relationship(obj_1=opencti_case_id, obj_2=observable_id, relationship_type="object")
                     else:
                         self.log.warning(f"Missing OpenCTI case ID or observable ID for IOC {ioc.ioc_value}. Cannot create relationship.")
                 else:
@@ -235,3 +241,43 @@ class IrisOpenCTIModule(IrisModuleInterface):
 
         #     except Exception as e:
         #         self.log.error(f"Error processing IOC deletion for {ioc.ioc_value}: {e}", exc_info=True)
+
+    def _process_asset_creation(self, assets) -> InterfaceStatus.IIStatus:
+        opencti_handler = OpenCTIHandler(mod_config=self._dict_conf, logger=self.log)
+        for asset in assets:
+            self.log.info(f"Processing asset creation for: {asset.asset_name} (Type: {asset.asset_type.asset_name}, Case: {asset.case.name if asset.case else 'N/A'})")
+            try:
+                opencti_handler.asset = asset
+                opencti_handler.iris_case = asset.case
+                opencti_case = opencti_handler.check_and_create_case()
+
+                asset_name_id, asset_ip_id, asset_domain_id = opencti_handler.create_asset()
+
+                # Create relationships with OpenCTI case
+                if opencti_case:
+                    opencti_case_id = opencti_case.get('id')
+                    if opencti_case_id and asset_name_id:
+                        self.log.info(f"Attempting to link OpenCTI case '{opencti_case_id}' with asset '{asset_name_id}'.")
+                        opencti_handler.create_relationship(obj_1=opencti_case_id, obj_2=asset_name_id, relationship_type="object")
+                    else:
+                        self.log.warning(f"Missing OpenCTI case ID or asset name ID for asset {asset.asset_name}. Cannot create relationship.")
+                    if opencti_case_id and asset_ip_id:
+                        self.log.info(f"Attempting to link OpenCTI case '{opencti_case_id}' with asset IP '{asset_ip_id}'.")
+                        opencti_handler.create_relationship(obj_1=opencti_case_id, obj_2=asset_ip_id, relationship_type="object")
+                    else:
+                        self.log.warning(f"Missing OpenCTI case ID or asset IP ID for asset {asset.asset_name}. Cannot create relationship.")
+                    if opencti_case_id and asset_domain_id:
+                        self.log.info(f"Attempting to link OpenCTI case '{opencti_case_id}' with asset domain '{asset_domain_id}'.")
+                        opencti_handler.create_relationship(obj_1=opencti_case_id, obj_2=asset_domain_id, relationship_type="object")
+                    else:
+                        self.log.warning(f"Missing OpenCTI case ID or asset domain ID for asset {asset.asset_name}. Cannot create relationship.")
+
+            except Exception as e:
+                self.log.error(f"Error processing IOC creation for {asset.asset_name}: {e}", exc_info=True)
+        return InterfaceStatus.I2Success(data=assets, logs=list(self.message_queue))
+
+    def _process_asset_update(self, assets) -> InterfaceStatus.IIStatus:
+        return InterfaceStatus.I2Success(data=assets, logs=list(self.message_queue))
+
+    def _process_asset_deletion(self, asset_numbers) -> InterfaceStatus.IIStatus:
+        return InterfaceStatus.I2Success(data=asset_numbers, logs=list(self.message_queue))

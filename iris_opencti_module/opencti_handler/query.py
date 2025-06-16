@@ -140,8 +140,8 @@ UPDATE_IOC_QUERY = """
 """
 
 DELETE_IOC_QUERY = """
-    mutation StixCyberObservableEdit($id: ID!) {
-        stixCyberObservableEdit(id: $id) {
+    mutation StixCoreObjectEdit($id: ID!) {
+        stixCoreObjectEdit(id: $id) {
             delete
         }
     }
@@ -192,22 +192,25 @@ LIST_IOC_FROM_CASE_QUERY = """
             objects(all: true) {
                 edges {
                     node {
-                        ... on BasicObject { id }
-                        ... on Indicator { name id creators { id } }
-                        ... on StixCyberObservable { observable_value creators { id } }
-                    }
-                }
-            }
+                        ... on StixCoreObject {
+                            id
+                            representative { main }
+                            creators { id }
+    }   }   }   }   }   }
+"""
+
+LIST_MARKING_DEFINITIONS_QUERY = """
+    query MarkingDefinitions($filters: FilterGroup) {
+        markingDefinitions(filters: $filters) {
+            edges { node { id definition } }
         }
     }
 """
 
-LIST_MARKING_DEFINITIONS_QUERY = """
-query MarkingDefinitions($filters: FilterGroup) {
-  markingDefinitions(filters: $filters) {
-    edges { node { id definition } }
-  }
-}
+CREATE_SYSTEM_QUERY = """
+    mutation SystemAdd($input: SystemAddInput!) {
+        systemAdd(input: $input) {
+            id
+        }
+    }
 """
-
-

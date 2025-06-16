@@ -1,8 +1,9 @@
 import requests
 from iris_opencti_module.opencti_handler.query import *
-from iris_opencti_module.opencti_handler.opencti_stix_cyber_observable import make_query
+from iris_opencti_module.opencti_handler.opencti_stix_cyber_observable import make_ioc_query, make_identity_query
 from app.datamgmt.case.case_iocs_db import get_detailed_iocs
 from app.datamgmt.case.case_iocs_db import get_tlps_dict
+from app.datamgmt.case.case_assets_db import get_assets
 
 
 class OpenCTIHandler:
@@ -134,14 +135,27 @@ class OpenCTIHandler:
         },
     }
 
+    class MockIocType:
+        def __init__(self, type_name):
+            self.type_name = type_name
 
-    def __init__(self, mod_config, logger, ioc = None):
+    class MockIoc:
+        def __init__(self, ioc_type, ioc_value, 
+                    ioc_description=None, ioc_tags=None):
+            self.ioc_value = ioc_value
+            self.ioc_type = OpenCTIHandler.MockIocType(ioc_type) if isinstance(ioc_type, str) else ioc_type
+            self.ioc_description = ioc_description
+            self.ioc_tags = ioc_tags
+
+
+    def __init__(self, mod_config, logger, ioc = None, asset = None):
         self.mod_config = mod_config
         self.log = logger
         self.opencti_api_url = mod_config.get('opencti_url', None)
         self.opencti_api_key = mod_config.get('opencti_api_key', None)
         self.ioc = ioc
-        self.iris_case = ioc.case if ioc and hasattr(ioc, 'case') else None
+        self.asset = asset
+        self.iris_case = ioc.case if ioc and hasattr(ioc, 'case') else asset.case if asset and hasattr(asset, 'case') else None
         self.api_user_id = self.get_api_user().get('id')
         self.opencti_case = None
 
@@ -276,15 +290,18 @@ class OpenCTIHandler:
         self.log.info(f"OpenCTI case with Iris ID '{case_iris_id}' does not exist or query failed.")
         return None
 
-    def check_ioc_exists(self):
+    def check_ioc_exists(self, ioc_type_name=None, ioc_value=None):
         """
         Checks if the IOC (self.ioc) exists in OpenCTI.
 
         Returns:
             dict: The OpenCTI observable node if it exists, None otherwise.
         """
-        ioc_type_name = self.ioc.ioc_type.type_name
-        ioc_value = self.ioc.ioc_value
+        if not ioc_type_name:
+            ioc_type_name = self.ioc.ioc_type.type_name
+        if not ioc_value:
+            ioc_value = self.ioc.ioc_value
+
         CONFIG = self.ATTRIBUTE_CONFIG.get(ioc_type_name, None)
 
         if '|' in ioc_type_name:
@@ -312,7 +329,7 @@ class OpenCTIHandler:
             }
         }
 
-        self.log.info(f"Checking if OpenCTI IOC '{self.ioc.ioc_value}' (Type: {ioc_type_name}) exists.")
+        self.log.info(f"Checking if OpenCTI IOC '{ioc_value}' (Type: {ioc_type_name}) exists.")
         data = self._execute_graphql_query(CHECK_IOC_EXISTS_QUERY, variables)
 
         if data and data.get('stixCyberObservables') and data['stixCyberObservables'].get('edges'):
@@ -320,24 +337,27 @@ class OpenCTIHandler:
             self.log.info(f"OpenCTI IOC '{ioc_node.get('observable_value')}' (ID: {ioc_node.get('id')}) exists.")
             return ioc_node
 
-        self.log.info(f"OpenCTI IOC '{self.ioc.ioc_value}' does not exist or query failed.")
+        self.log.info(f"OpenCTI IOC '{ioc_value}' does not exist or query failed.")
         return None
 
-    def create_ioc(self):
+    def create_ioc(self, ioc_type=None, ioc_value=None):
         """
         Creates a new IOC in OpenCTI based on the current IOC variable (self.ioc).
         Returns:
             dict: The created OpenCTI observable node if successful, None otherwise.
         """
-        ioc_value = self.ioc.ioc_value
-        ioc_type = self.ioc.ioc_type.type_name
+        if not ioc_type:
+            ioc_type = self.ioc.ioc_type.type_name
+        if not ioc_value:
+            ioc_value = self.ioc.ioc_value
+
         field_names = ioc_type.split('|')
         CONFIG = self.ATTRIBUTE_CONFIG.get(ioc_type, None)
-        object_marking = self.get_marking(self.ioc.tlp.tlp_name) if self.ioc.tlp else None
+        object_marking = self.get_marking(self.ioc.tlp.tlp_name) if hasattr(self.ioc, 'tlp') else None
         simple_observable_description = self.ioc.ioc_description if self.ioc.ioc_description else None
+
         if len(field_names) > 1:
             ioc_value = ioc_value.split('|')
-
             observable_data = {}
             for i, field_name in enumerate(field_names):
                 if not CONFIG or field_name not in CONFIG:
@@ -362,12 +382,12 @@ class OpenCTIHandler:
                             current[part] = {}
                         current = current[part]
 
-            variables = make_query(observableData=observable_data,
+            variables = make_ioc_query(observableData=observable_data,
                             objectMarking=object_marking,
                             simple_observable_description=simple_observable_description)
         else:
             simple_observable_key = CONFIG.get('key', 'None')
-            variables = make_query(simple_observable_key=simple_observable_key,
+            variables = make_ioc_query(simple_observable_key=simple_observable_key,
                                 simple_observable_value=ioc_value,
                                 objectMarking=object_marking,
                                 simple_observable_description=simple_observable_description)
@@ -453,7 +473,6 @@ class OpenCTIHandler:
         self.log.info(f"Attempting to delete OpenCTI IOC ID: {opencti_ioc_id}.")
         data = self._execute_graphql_query(DELETE_IOC_QUERY, variables)
 
-
         if data is not None:
             if data.get('stixCyberObservableDelete') is not None:
                 self.log.info(f"OpenCTI IOC ID: {opencti_ioc_id} deletion command sent successfully.")
@@ -461,7 +480,6 @@ class OpenCTIHandler:
             elif 'stixCyberObservableEdit' in data and data['stixCyberObservableEdit'].get('delete'):
                  self.log.info(f"OpenCTI IOC ID: {opencti_ioc_id} deletion via edit successful.")
                  return True
-
 
         self.log.error(f"Failed to delete OpenCTI IOC ID: {opencti_ioc_id}.")
         return False
@@ -520,7 +538,7 @@ class OpenCTIHandler:
         self.log.error(f"Failed to delete OpenCTI case ID: {opencti_case_id}.")
         return False
 
-    def create_relationship(self, case_id: str, ioc_id: str, relationship_type: str = "object"):
+    def create_relationship(self, obj_1: str, obj_2: str, relationship_type: str = "object"):
         """
         Creates a relationship in OpenCTI between two entities.
         Typically used to link an IOC (to_id) to a case (from_id).
@@ -534,13 +552,13 @@ class OpenCTIHandler:
             dict: The created relationship node if successful, None otherwise.
         """
         variables = {
-            "id": case_id,
+            "id": obj_1,
             "input": {
-                "toId": ioc_id,
+                "toId": obj_2,
                 "relationship_type": relationship_type
             }
         }
-        self.log.info(f"Creating relationship from {case_id} to {ioc_id} of type '{relationship_type}'.")
+        self.log.info(f"Creating relationship from {obj_1} to {obj_2} of type '{relationship_type}'.")
         data = self._execute_graphql_query(CREATE_RELATIONSHIP_QUERY, variables)
 
         if data and data.get('containerEdit') and data['containerEdit'].get('relationAdd'):
@@ -548,7 +566,7 @@ class OpenCTIHandler:
             self.log.info(f"Relationship (ID: {relationship.get('id')}) created successfully.")
             return relationship
 
-        self.log.error(f"Failed to create relationship from {case_id} to {ioc_id}.")
+        self.log.error(f"Failed to create relationship from {obj_1} to {obj_2}.")
         return None
     
     def remove_relationship(self, case_id: str, ioc_id: str, relationship_type: str = "object"):
@@ -597,16 +615,17 @@ class OpenCTIHandler:
 
         try:
             iris_iocs_detailed = get_detailed_iocs(self.iris_case.case_id)
+            iris_assets_detailed = get_assets(self.iris_case.case_id)
         except Exception as e:
             self.log.error(f"Failed to get detailed IOCs from Iris for case ID {self.iris_case.case_id}: {e}")
             return
 
-        if not iris_iocs_detailed:
-            self.log.info(f"No IOCs found in Iris case '{self.iris_case.name}' to compare.")
+        if not iris_iocs_detailed and not iris_assets_detailed:
+            self.log.info(f"No IOCs / assets found in Iris case '{self.iris_case.name}'")
             iris_ioc_values = set()
         else:
             iris_ioc_values = {ioc.ioc_value for ioc in iris_iocs_detailed}
-            self.log.info(f"Iris IOC values for case '{self.iris_case.name}': {iris_ioc_values}")
+            self.log.info(f"Iris IOC / assets values for case '{self.iris_case.name}'")
 
         variables = {"id": opencti_case_id}
         opencti_data = self._execute_graphql_query(LIST_IOC_FROM_CASE_QUERY, variables)
@@ -628,22 +647,25 @@ class OpenCTIHandler:
             if not opencti_ioc:
                 continue
 
-            opencti_ioc_value = opencti_ioc.get('observable_value') or opencti_ioc.get('name')
+            opencti_ioc_value = opencti_ioc.get('representative').get('main')
             opencti_ioc_id = opencti_ioc.get('id')
 
             if not opencti_ioc_value or not opencti_ioc_id:
-                self.log.warning(f"Skipping OpenCTI IOC due to missing value or ID: {opencti_ioc}")
+                self.log.warning(f"Skipping OpenCTI IOC due to missing value - ID: {opencti_ioc}")
                 continue
 
             is_present = False
             for iris_ioc_value in iris_ioc_values:
                 if opencti_ioc_value in iris_ioc_value.split('|'): #TODO while this verification works, it will not work for iocs sharing a part of the value (e.g. domain|ip)
                     is_present = True
+            for asset in iris_assets_detailed:
+                if opencti_ioc_value in (asset.asset_name, asset.asset_ip, asset.asset_domain):
+                    is_present = True
             if not is_present:
                 self.log.info(f"IOC '{opencti_ioc_value}' (ID: {opencti_ioc_id}) exists in OpenCTI case "
                             f"but not in Iris case '{self.iris_case.name}'. Attempting deletion.")
                 if self.check_ioc_ownership(opencti_ioc):
-                    self.delete_ioc(opencti_ioc_id)
+                    self.delete_ioc(opencti_ioc_id) #TODO indicator (ex : System) is not deleted, only observable
                 else:
                     self.remove_relationship(opencti_case_id, opencti_ioc_id, "object")
 
@@ -717,3 +739,50 @@ class OpenCTIHandler:
         else:
             self.log.error(f"No IRIS marking found for TLP '{tlp}'.")
             return None
+
+    def create_asset(self):
+        asset_name = self.asset.asset_name
+        asset_domain = self.asset.asset_domain
+        asset_ip = self.asset.asset_ip
+        asset_description = self.asset.asset_description
+        asset_type = "System"
+
+        # Create System
+        variables = make_identity_query(type = asset_type,
+                                                name = asset_name,
+                                                description = asset_description)
+        try:
+            result = self._execute_graphql_query(CREATE_SYSTEM_QUERY, variables)
+            if result:
+                asset_name_id = result.get('systemAdd', {}).get('id')
+                self.log.info(f"System created successfully {asset_name_id}")
+            else:
+                self.log.error("Failed to create IOC")
+                asset_name_id = None
+        except ValueError as e:
+            self.log.error(f"Create system failed: {str(e)}")
+            return None
+
+        # Create IP and Domain observables if provided
+        if asset_ip:
+            self.ioc = self.MockIoc(ioc_type="ip-any", ioc_value=asset_ip)
+            opencti_observable = self.check_ioc_exists()
+            if not opencti_observable:
+                self.log.info(f"OpenCTI observable for IOC '{asset_ip}' not found, attempting creation.")
+                opencti_observable = self.create_ioc()
+                asset_ip_id = opencti_observable.get('id') if opencti_observable else None
+                if not opencti_observable:
+                    self.log.error(f"Failed to create or find OpenCTI observable for IOC '{asset_ip}'. Skipping relationship.")
+
+        if asset_domain:
+            self.ioc = self.MockIoc(ioc_type="domain", ioc_value=asset_domain)
+            opencti_observable = self.check_ioc_exists()
+            if not opencti_observable:
+                self.log.info(f"OpenCTI observable for IOC '{asset_ip}' not found, attempting creation.")
+                opencti_observable = self.create_ioc()
+                asset_domain_id = opencti_observable.get('id') if opencti_observable else None
+                if not opencti_observable:
+                    self.log.error(f"Failed to create or find OpenCTI observable for IOC '{asset_ip}'. Skipping relationship.")
+
+        # Create relationship between System and case
+        return asset_name_id, asset_ip_id, asset_domain_id

@@ -1,4 +1,4 @@
-def make_query(**kwargs):
+def make_ioc_query(**kwargs):
     observable_data = kwargs.get("observableData", {})
     simple_observable_id = kwargs.get("simple_observable_id", None)
     simple_observable_key = kwargs.get("simple_observable_key", None)
@@ -726,3 +726,71 @@ def make_query(**kwargs):
                 ),
             }
         return input_variables
+
+def make_identity_query(**kwargs):
+    type = kwargs.get("type", None)
+    stix_id = kwargs.get("stix_id", None)
+    created_by = kwargs.get("createdBy", None)
+    object_marking = kwargs.get("objectMarking", None)
+    object_label = kwargs.get("objectLabel", None)
+    external_references = kwargs.get("externalReferences", None)
+    revoked = kwargs.get("revoked", None)
+    confidence = kwargs.get("confidence", None)
+    lang = kwargs.get("lang", None)
+    created = kwargs.get("created", None)
+    modified = kwargs.get("modified", None)
+    name = kwargs.get("name", None)
+    description = kwargs.get("description", None)
+    contact_information = kwargs.get("contact_information", None)
+    roles = kwargs.get("roles", None)
+    x_opencti_aliases = kwargs.get("x_opencti_aliases", None)
+    x_opencti_organization_type = kwargs.get("x_opencti_organization_type", None)
+    x_opencti_reliability = kwargs.get("x_opencti_reliability", None)
+    x_opencti_firstname = kwargs.get("x_opencti_firstname", None)
+    x_opencti_lastname = kwargs.get("x_opencti_lastname", None)
+    x_opencti_stix_ids = kwargs.get("x_opencti_stix_ids", None)
+    granted_refs = kwargs.get("objectOrganization", None)
+    x_opencti_workflow_id = kwargs.get("x_opencti_workflow_id", None)
+    update = kwargs.get("update", False)
+
+    if type is not None and name is not None:
+        input_variables = {
+            "stix_id": stix_id,
+            "createdBy": created_by,
+            "objectMarking": object_marking,
+            "objectLabel": object_label,
+            "externalReferences": external_references,
+            "revoked": revoked,
+            "confidence": confidence,
+            "lang": lang,
+            "created": created,
+            "modified": modified,
+            "name": name,
+            "description": description,
+            "contact_information": contact_information,
+            "roles": roles,
+            "x_opencti_aliases": x_opencti_aliases,
+            "x_opencti_stix_ids": x_opencti_stix_ids,
+            "x_opencti_workflow_id": x_opencti_workflow_id,
+            "update": update,
+        }
+        if type == "Organization":
+            input_variables["x_opencti_organization_type"] = (
+                x_opencti_organization_type
+            )
+            input_variables["x_opencti_reliability"] = x_opencti_reliability
+        elif type == "Individual":
+            input_variables["objectOrganization"] = granted_refs
+            input_variables["x_opencti_firstname"] = x_opencti_firstname
+            input_variables["x_opencti_lastname"] = x_opencti_lastname
+            input_variables["x_opencti_reliability"] = x_opencti_reliability
+        elif type == "System":
+            input_variables["objectOrganization"] = granted_refs
+            input_variables["x_opencti_firstname"] = x_opencti_firstname
+            input_variables["x_opencti_lastname"] = x_opencti_lastname
+            input_variables["x_opencti_reliability"] = x_opencti_reliability
+        else:
+            input_variables["type"] = type
+        return {"input": input_variables,}
+    else:
+        return None
