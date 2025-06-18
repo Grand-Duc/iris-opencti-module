@@ -568,8 +568,8 @@ class OpenCTIHandler:
 
         self.log.error(f"Failed to create relationship from {obj_1} to {obj_2}.")
         return None
-    
-    def remove_relationship(self, case_id: str, ioc_id: str, relationship_type: str = "object"):
+
+    def remove_relationship(self, obj_1: str, obj_2: str, relationship_type: str = "object"):
         """
         Creates a relationship in OpenCTI between a case and an IOC.
         Args:
@@ -580,11 +580,11 @@ class OpenCTIHandler:
             dict: The created relationship node if successful, None otherwise.
         """
         variables = {
-            "id": case_id,
-            "toId": ioc_id,
+            "id": obj_1,
+            "toId": obj_2,
             "relationship_type": relationship_type
         }
-        self.log.info(f"Removing relationship from {case_id} to {ioc_id} of type '{relationship_type}'.")
+        self.log.info(f"Removing relationship from {obj_1} to {obj_2} of type '{relationship_type}'.")
         data = self._execute_graphql_query(REMOVE_RELATIONSHIP_QUERY, variables)
 
         if data and data.get('stixDomainObjectEdit') and data['stixDomainObjectEdit'].get('relationDelete'):
@@ -592,8 +592,20 @@ class OpenCTIHandler:
             self.log.info(f"Relationship (from case ID: {relationship.get('id')}) removed successfully.")
             return relationship
 
-        self.log.error(f"Failed to remove relationship from {case_id} to {ioc_id}.")
+        self.log.error(f"Failed to remove relationship from {obj_1} to {obj_2}.")
         return None
+
+    # def create_relationship_in_graph(self, opencti_case_id: str, relationship_id: str, relationship_type: str = "related-to"):
+    #     """
+    #     Creates a relationship in OpenCTI between a case and an IOC.
+    #     Args:
+    #         opencti_case_id (str): The ID of the OpenCTI case to which the IOC will be linked.
+    #         relationship_id (str): The ID of the OpenCTI IOC to link to the case.
+    #         relationship_type (str): The type of relationship to create. Defaults to "object".
+    #     Returns:
+    #         dict: The created relationship node if successful, None otherwise.
+    #     """
+    #     return self.create_relationship(opencti_case_id, relationship_id, relationship_type)
 
     def compare_ioc(self, opencti_case_id: str):
         """
@@ -745,6 +757,11 @@ class OpenCTIHandler:
         asset_domain = self.asset.asset_domain
         asset_ip = self.asset.asset_ip
         asset_description = self.asset.asset_description
+
+        asset_name_id = None
+        asset_ip_id = None
+        asset_domain_id = None
+
         asset_type = "System"
 
         # Create System
@@ -778,11 +795,11 @@ class OpenCTIHandler:
             self.ioc = self.MockIoc(ioc_type="domain", ioc_value=asset_domain)
             opencti_observable = self.check_ioc_exists()
             if not opencti_observable:
-                self.log.info(f"OpenCTI observable for IOC '{asset_ip}' not found, attempting creation.")
+                self.log.info(f"OpenCTI observable for IOC '{asset_domain}' not found, attempting creation.")
                 opencti_observable = self.create_ioc()
                 asset_domain_id = opencti_observable.get('id') if opencti_observable else None
                 if not opencti_observable:
-                    self.log.error(f"Failed to create or find OpenCTI observable for IOC '{asset_ip}'. Skipping relationship.")
+                    self.log.error(f"Failed to create or find OpenCTI observable for IOC '{asset_domain}'. Skipping relationship.")
 
         # Create relationship between System and case
         return asset_name_id, asset_ip_id, asset_domain_id

@@ -277,7 +277,27 @@ class IrisOpenCTIModule(IrisModuleInterface):
         return InterfaceStatus.I2Success(data=assets, logs=list(self.message_queue))
 
     def _process_asset_update(self, assets) -> InterfaceStatus.IIStatus:
-        return InterfaceStatus.I2Success(data=assets, logs=list(self.message_queue))
+        self.log.info("Starting IOC update process. Ensuring all IOCs and cases exist first (creation logic).")
+
+        self._process_asset_creation(assets)
+
+        self.log.info("Creation/existence check complete. Proceeding with update-specific logic (comparison).")
+        opencti_handler = OpenCTIHandler(mod_config=self._dict_conf, logger=self.log)
+
+        for asset in assets:
+            opencti_handler.asset = asset
+            opencti_handler.iris_case = asset.case
+            try:
+                if not opencti_handler.opencti_case:
+                    opencti_handler.opencti_case = opencti_handler.check_case_exists()
+                if opencti_handler.opencti_case and opencti_handler.opencti_case.get('id'):
+                    self.log.info(f"OpenCTI case (ID: {opencti_handler.opencti_case.get('id')}) found for asset {asset.asset_name}. Proceeding with comparison.")
+                    opencti_handler.compare_ioc(opencti_case_id=opencti_handler.opencti_case.get('id'))
+                else:
+                    self.log.warning(f"No OpenCTI case found for asset {asset.asset_name} during update's comparison phase. Skipping comparison.")
+
+            except Exception as e:
+                self.log.error(f"Error processing IOC update (comparison phase) for {asset.asset_name}: {e}", exc_info=True)
 
     def _process_asset_deletion(self, asset_numbers) -> InterfaceStatus.IIStatus:
         return InterfaceStatus.I2Success(data=asset_numbers, logs=list(self.message_queue))

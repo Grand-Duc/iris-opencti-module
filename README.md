@@ -1,27 +1,29 @@
 # IRIS OpenCTI Module
 An interface module to interact with OpenCTI.
 > For the moment, this module is only compatible with **IRIS 2.5.0-beta.1** which is a **development** version.</br>
-> This is due to the fact that all the production version does not share the actual case on ioc hook action and the Ioc class does not contain any link o the related case.
+> This is due to the fact that all the production version does not share the actual case on ioc hook action and the Ioc class does not contain any link to the related case.
 ## Presentation
 This module is designed to facilitate the integration of IRIS with OpenCTI, enabling the exchange of threat intelligence data between the two platforms (see Details part for more information).
 - Cases : Cases created / updated / deleted in DFIR IRIS are mirrored in OpenCTI.
 - Observables : Observables created / updated / deleted in DFIR IRIS are mirrored in OpenCTI.
+- Assets : Assets created / updated / deleted in DFIR IRIS are mirrored in OpenCTI as a mix of observables and indicators.
+- Tags : OpenCTI score and labels are applied to observables in IRIS through tags.
 ## Installation
 1. Clone the repository:
    ```bash
    git clone https://github.com/Grand-Duc/iris-opencti-module.git
-    ```
+   ```
 2. Compile the module using the buildnpush2iris.sh script:
-    ```bash
-    cd iris_opencti_module
-    wget https://docs.dfir-iris.org/latest/development/modules/quick_start/buildnpush2iris.sh
-    chmod +x buildnpush2iris.sh
-    sudo ./buildnpush2iris.sh -a
-    ```
+   ```bash
+   cd iris_opencti_module
+   wget https://docs.dfir-iris.org/latest/development/modules/quick_start/buildnpush2iris.sh
+   chmod +x buildnpush2iris.sh
+   sudo ./buildnpush2iris.sh -a
+   ```
 3. Add the module to IRIS:
    - Go to the IRIS web interface.
-   - Navigate to "Advanced > Modules" section (https://{your_iris_url}/manage/modules).
-   - Click on "Add Module", fill the search bar with "iris_opencti_module" and click on "Validate module".
+   - Navigate to "Advanced > Modules" section (`https://{your_iris_url}/manage/modules`).
+   - Click on "Add Module", fill the search bar with "**iris_opencti_module**" and click on "Validate module".
 4. Configure the module.
 By default, the module is disable becase it requires additionnal configuration variable.
 </br>
@@ -43,6 +45,7 @@ Following variable are sent:
 #### Case Deletion
 For case deletion, only the associated IRIS case id is provided by the hook (while the case doesn't exist anymore). A solution is to delete the case in OpenCTI which name starts by `#{case_id} - `. Thus, it is strongly recommanded to NOT create cases in OpenCTI with a name starting by the same pattern.
 
+---
 ### Observables
 Observables from DFIR IRIS are sent to OpenCTI. Theses observables are linked to the actual case.
 </br>
@@ -62,6 +65,14 @@ Because IRIS does not send the former value of the observable, the module will c
 #### Observable Deletion
 > It is important to note that the deletion can't be done for the moment because IRIS only provide the ID of the deleted observable and not the observable itself. This means that the module can't know which observable to delete in OpenCTI. The deletion will be done by comparing the observables in OpenCTI and IRIS during **the next observable update from the same case**.
 
+---
+### Assets
+Assets from DFIR IRIS are sent to OpenCTI as a mix of observables and indicators.
+</br>
+Following variable are sent:
+- Asset name and description as System indicator
+- Asset IP address as observable
+- Asset domain as observable
 
 ## Future Work
 From most probably to least probable, here are the future work that could be done on this module:
@@ -70,7 +81,7 @@ From most probably to least probable, here are the future work that could be don
 - Add observable creation in comparison (in case an OpenCTI observable was deleted but still present in the IRIS case).
 - Add optional configuration to decide is IRIS has priority over OpenCTI on deletion of observables.
 ### Long Term
-- Add support for device objects.
+- Add support for device objects. -> basic functionality already implemented.
 - Add observable enrichment from OpenCTI (similar to IRIS VT Module).
 - Add TTP observables support in IRIS.
 - Add way to support events in OpenCTI by creating relationship.
@@ -85,6 +96,7 @@ The module is composed of the following main files :
 
 The hook execution logs can be viewed from multiple places :
 - In the IRIS web interface under "DIM Taks" section (https://{your_iris_url}/dim/tasks).
+- In the "Quick actions" button (top right corner of the IRIS web interface) > "DIM Tasks"
 - In the iriswebapp_worker docker container logs:
   ```bash
   docker logs -f iriswebapp_worker
